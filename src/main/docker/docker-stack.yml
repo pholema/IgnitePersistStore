@@ -1,0 +1,43 @@
+version: '3.4'
+x-logging: &DEFAULT-LOGGING
+  driver: json-file
+  options:
+    max-file: 5
+    max-size: 10m
+
+services:
+  ignite:
+    image: docker.neg/rtm/maintain/ignitepersiststore:latest
+    volumes:
+      - /software/ignite_byDocker/IgnitePersistStore/log:/app/log
+    deploy:
+      mode: replicated
+      replicas: 2
+      placement:
+        constraints:
+          - node.labels.ignitePersistStore == true
+    logging: *DEFAULT-LOGGING
+    configs: #link to docker container's location
+      - source: application-file
+        target: /app/config/application.properties
+      - source: jetty-file
+        target: /app/config/jetty.xml
+      - source: default-log4j
+        target: /app/config/log4j.properties
+      - source: default-applicationContext
+        target: /app/config/applicationContext.xml
+
+configs: #binding file with docker configs
+  application-file:
+    file: ./application-${CONFIG_TAG}.properties
+  jetty-file:
+    file: ./jetty.xml
+  default-log4j:
+    external: true
+  default-applicationContext:
+    external: true
+
+networks:
+  default:
+    external:
+      name: host

@@ -1,0 +1,90 @@
+variables:
+  IMAGE_TAG: ${CI_COMMIT_REF_NAME}-${CI_PIPELINE_ID}
+
+stages:
+#  - test      
+  - build        
+  - build_docker 
+  - deploy
+  - deploy_PDT
+
+build_job:
+  stage: build
+  image: maven:3-jdk-8
+  before_script:
+    - mvn -v
+    - ls /opt/apache-maven-3.2.5/repository
+    - ls /usr/share/maven/ref/
+    - echo "CI_ENVIRONMENT_SLUG:" ${CI_ENVIRONMENT_SLUG}
+    - echo "CI_PROJECT_PATH_SLUG:" ${CI_PROJECT_PATH_SLUG}
+  script:
+    - mvn clean package -DskipTests
+  cache:
+    untracked: true
+  artifacts:
+    expire_in: 1 days
+    paths:
+      - target/app
+      - src
+  only:
+    - master
+  except:
+      - pushes
+
+docker_image:
+  stage: build_docker
+  image: docker:18.09.3
+  before_script:
+    - pwd
+    - cd target/app/app
+    - docker --version
+    - export DOCKER_HOST="tcp://10.1.41.244:2375" #docker outside docker
+  script:
+    - echo "build images:" ${CI_REGISTRY_IMAGE} ":" ${IMAGE_TAG} 
+    - docker build -t ${CI_REGISTRY_IMAGE}:${IMAGE_TAG} .
+    - docker push ${CI_REGISTRY_IMAGE}:${IMAGE_TAG}
+  only:
+    - master
+  except:
+    - pushes
+
+
+deploy-to-swarm_GQC:
+  stage: deploy
+  image: docker:git
+  variables:
+    DOCKER_HOST: tcp://10.1.41.243:2375
+  before_script:
+    - pwd
+    - cd target/app/docker-stack
+    - ls
+    - docker --version
+  script:
+    - docker stack rm ignitePersistStore-Stack-GQC
+    - sleep 10s
+    - CONFIG_TAG=GQC docker stack deploy --with-registry-auth --resolve-image never --compose-file docker-stack.yml ignitePersistStore-Stack-GQC
+    
+  only:
+    - master
+  except:
+    - pushes
+
+deploy_to_swarm_PDT:
+  stage: deploy_PDT
+  image: docker:git
+  variables:
+    DOCKER_HOST: tcp://10.1.41.246:2375
+  before_script:
+    - pwd
+    - cd target/app/docker-stack
+    - ls
+    - docker --version
+  script:
+    - docker stack rm ignitePersistStore-Stack-PDT
+    - sleep 10s
+    - CONFIG_TAG=PDT docker stack deploy --with-registry-auth --resolve-image never --compose-file docker-stack.yml ignitePersistStore-Stack-PDT
+  only:
+    - master
+  except:
+    - pushes
+  when: manual
